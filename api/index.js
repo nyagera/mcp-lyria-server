@@ -1,15 +1,16 @@
 // api/index.js
 // Serveur MCP (Streamable HTTP) exposant Lyria 3 et Lyria 3 Pro via Replicate.
-// Basé sur le pattern mcp-handler + withMcpAuth (Vercel).
+// mcp-handler attend des objets Request/Response Fetch API (Web standard),
+// mais Vercel invoque cette fonction Node.js avec la signature classique
+// (req, res). On convertit donc manuellement dans les deux sens.
 
 const { createMcpHandler, withMcpAuth } = require("mcp-handler");
 const { z } = require("zod");
 const { runReplicateModel } = require("../lib/replicate");
 const { verifyBearerToken } = require("../lib/oauth");
 
-const handler = createMcpHandler(
+const mcpHandler = createMcpHandler(
   (server) => {
-    // --- Tool 1 : Lyria 3 (clip 30s) ---
     server.tool(
       "generate_music_clip",
       "Génère un clip musical de 30 secondes avec Google Lyria 3 (rapide, idéal pour itérer avant Lyria 3 Pro).",
@@ -39,7 +40,6 @@ const handler = createMcpHandler(
       }
     );
 
-    // --- Tool 2 : Lyria 3 Pro (morceau complet jusqu'à 3 min) ---
     server.tool(
       "generate_song",
       "Génère un morceau complet (jusqu'à ~3 minutes) avec Google Lyria 3 Pro : structure couplets/refrains/ponts, paroles personnalisées, timestamps.",
@@ -79,11 +79,50 @@ const handler = createMcpHandler(
   { basePath: "/api" }
 );
 
-// Protection OAuth : valide le Bearer token avant d'exécuter tout outil.
-const authHandler = withMcpAuth(handler, verifyBearerToken, {
+const authHandler = withMcpAuth(mcpHandler, verifyBearerToken, {
   required: true,
   resourceMetadataPath: "/.well-known/oauth-protected-resource",
 });
 
-module.exports = authHandler;
+async function nodeRequestToFetchRequest(req) {
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const url = `${proto}://${req.headers.host}${req.url}`;
+
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    headers.set(key, Array.isArray(value) ? value.join(", ") : String(value));
+  }
+
+  let body;
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    if (chunks.length) body = Buffer.concat(chunks);
+  }
+
+  return new Request(url, { method: req.method, headers, body, duplex: "half" });
+}
+
+async function sendFetchResponse(fetchRes, res) {
+  res.statusCode = fetchRes.status;
+  fetchRes.headers.forEach((value, key) => {
+    res.setHeader(key, value);
+  });
+  const buf = Buffer.from(await fetchRes.arrayBuffer());
+  res.end(buf);
+}
+
+module.exports = async function handler(req, res) {
+  try {
+    const fetchReq = await nodeRequestToFetchRequest(req);
+    const fetchRes = await authHandler(fetchReq);
+    await sendFetchResponse(fetchRes, res);
+  } catch (err) {
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "application/json");
+    res.end(JSON.stringify({ error: "internal_error", message: err.message, stack: err.stack }));
+  }
+};
+
 module.exports.config = { api: { bodyParser: false } };
