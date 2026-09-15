@@ -34,13 +34,6 @@ const mcpHandler = createMcpHandler(
         return {
           content: [
             { type: "text", text: `Clip généré (30s) : ${output.url}` },
-            {
-              type: "resource_link",
-              uri: output.url,
-              name: "clip.mp3",
-              description: "Clip musical généré (30s)",
-              mimeType: "audio/mpeg",
-            },
           ],
         };
       }
@@ -75,13 +68,6 @@ const mcpHandler = createMcpHandler(
         return {
           content: [
             { type: "text", text: `Morceau généré : ${output.url}` },
-            {
-              type: "resource_link",
-              uri: output.url,
-              name: "song.mp3",
-              description: "Morceau musical généré",
-              mimeType: "audio/mpeg",
-            },
           ],
         };
       }
