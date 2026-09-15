@@ -1,13 +1,16 @@
 // api/auth/callback/github.js
-// Reçoit le `code` de GitHub, l'échange contre un access_token GitHub,
-// vérifie l'identité, puis émet un token de session MCP interne.
+// Reçoit le retour de GitHub, échange le code contre un access_token GitHub,
+// identifie l'utilisateur, puis émet NOTRE propre code d'autorisation signé
+// et redirige vers le client MCP d'origine (ex: Perplexity).
 
-const { createSession } = require("../../../lib/oauth");
+const { verify, sign } = require("../../../lib/sign");
 
 module.exports = async function handler(req, res) {
-  const { code } = req.query;
-  if (!code) {
-    res.status(400).json({ error: "missing_code" });
+  const { code, state } = req.query;
+
+  const relay = verify(state);
+  if (!relay) {
+    res.status(400).json({ error: "invalid_state" });
     return;
   }
 
@@ -33,14 +36,21 @@ module.exports = async function handler(req, res) {
     });
     const user = await userRes.json();
 
-    const mcpSessionToken = createSession(user.login);
-
-    res.status(200).json({
-      message: "Authentification GitHub réussie.",
-      github_user: user.login,
-      mcp_bearer_token: mcpSessionToken,
-      expires_in_hours: 8,
+    const authCode = sign({
+      github_login: user.login,
+      redirect_uri: relay.redirect_uri,
+      code_challenge: relay.code_challenge,
+      code_challenge_method: relay.code_challenge_method,
+      type: "auth_code",
+      exp: Date.now() + 5 * 60 * 1000,
     });
+
+    const redirectTo = new URL(relay.redirect_uri);
+    redirectTo.searchParams.set("code", authCode);
+    if (relay.state) redirectTo.searchParams.set("state", relay.state);
+
+    res.writeHead(302, { Location: redirectTo.toString() });
+    res.end();
   } catch (err) {
     res.status(500).json({ error: "internal_error", message: err.message });
   }
