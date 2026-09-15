@@ -76,7 +76,7 @@ const mcpHandler = createMcpHandler(
     );
   },
   {},
-  { basePath: "/api" }
+  { streamableHttpEndpoint: "/mcp" }
 );
 
 const authHandler = withMcpAuth(mcpHandler, verifyBearerToken, {
