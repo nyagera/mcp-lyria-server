@@ -1,20 +1,25 @@
 // api/auth/callback/github.js
-// Reçoit le retour de GitHub, échange le code contre un access_token GitHub,
-// identifie l'utilisateur, puis émet NOTRE propre code d'autorisation signé
-// et redirige vers le client MCP d'origine (ex: Perplexity).
-
 const { verify, sign } = require("../../../lib/sign");
 
 module.exports = async function handler(req, res) {
-  const { code, state } = req.query;
-
-  const relay = verify(state);
-  if (!relay) {
-    res.status(400).json({ error: "invalid_state" });
-    return;
-  }
-
   try {
+    if (!process.env.SESSION_SECRET) {
+      res.status(500).json({ error: "config_error", message: "SESSION_SECRET manquant sur Vercel." });
+      return;
+    }
+    if (!process.env.OAUTH_CLIENT_ID || !process.env.OAUTH_CLIENT_SECRET) {
+      res.status(500).json({ error: "config_error", message: "OAUTH_CLIENT_ID ou OAUTH_CLIENT_SECRET manquant sur Vercel." });
+      return;
+    }
+
+    const { code, state } = req.query;
+
+    const relay = verify(state);
+    if (!relay) {
+      res.status(400).json({ error: "invalid_state" });
+      return;
+    }
+
     const tokenRes = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -52,6 +57,6 @@ module.exports = async function handler(req, res) {
     res.writeHead(302, { Location: redirectTo.toString() });
     res.end();
   } catch (err) {
-    res.status(500).json({ error: "internal_error", message: err.message });
+    res.status(500).json({ error: "internal_error", message: err.message, stack: err.stack });
   }
 };
