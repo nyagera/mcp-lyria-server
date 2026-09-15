@@ -1,0 +1,14 @@
+{
+  "name": "mcp-lyria-server",
+  "version": "1.0.0",
+  "description": "Serveur MCP distant exposant Google Lyria 3 et Lyria 3 Pro (Replicate) à n'importe quel LLM compatible MCP.",
+  "main": "api/index.js",
+  "dependencies": {
+    "mcp-handler": "^1.1.0",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "zod": "^3.23.8"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
